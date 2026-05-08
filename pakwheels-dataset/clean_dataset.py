@@ -1,7 +1,24 @@
 import pandas as pd
-import re
 
-def clean_car_dataset(file_path, output_path):
+def convert_price_to_numeric(price_str):
+    """Convert prices like '33.2 lacs' or '1.2 crore' to numeric values."""
+    if pd.isna(price_str) or price_str == 'Not Specified':
+        return None
+    
+    price_str = str(price_str).strip().lower()
+    price_str = price_str.replace('pkr', '').strip()
+    
+    if 'crore' in price_str:
+        return float(price_str.replace('crore', '').strip()) * 10000000
+    elif 'lac' in price_str:
+        return float(price_str.replace('lac', '').replace('s', '').strip()) * 100000
+    else:
+        try:
+            return float(price_str)
+        except:
+            return None
+
+def clean_car_dataset(file_path, output_path, single_column):
     print("Loading dataset...")
     df = pd.read_csv(file_path)
 
@@ -20,11 +37,8 @@ def clean_car_dataset(file_path, output_path):
     df['Engine Capacity'] = df['Engine Capacity'].astype(str).str.replace(r'[^\d]', '', regex=True)
     df['Engine Capacity'] = pd.to_numeric(df['Engine Capacity'], errors='coerce')
 
-    # 4. Clean 'Price' (Remove commas, "PKR", etc., and ensure it's a number)
-    # Note: If your prices are text like "45 Lacs", you will need a custom function here.
-    # Assuming they are numbers with commas like "4,500,000":
-    df['Price'] = df['Price'].astype(str).str.replace(r'[^\d]', '', regex=True)
-    df['Price'] = pd.to_numeric(df['Price'], errors='coerce')
+    # 4. Clean 'Price' (Convert prices like "45 Lacs" or "1.2 Crore" to numeric)
+    df['Price'] = df['Price'].apply(convert_price_to_numeric)
 
     # 5. Handle missing values in text columns
     text_cols = ['Fuel', 'Transmission', 'Province', 'Color', 'Assembly', 'Body Type', 'Features']
@@ -43,6 +57,10 @@ def clean_car_dataset(file_path, output_path):
     # Drop any rows where our conversions resulted in NaN
     df.dropna(subset=['Millage', 'Engine Capacity', 'Price'], inplace=True)
 
+    # Keep only page_content column
+    if single_column == True:
+        df = df[['page_content']]
+
     print(f"Cleaned shape: {df.shape}")
     
     # Save the cleaned data to a new file
@@ -50,4 +68,5 @@ def clean_car_dataset(file_path, output_path):
     print(f"Cleaned dataset saved to {output_path}")
 
 # Run the function
-# clean_car_dataset("data/raw_pakwheels.csv", "data/cleaned_pakwheels.csv")
+clean_car_dataset("pakwheels-dataset/PakWheels Dataset.csv", "pakwheels-dataset/cleaned_all_columns.csv", single_column=False)
+clean_car_dataset("pakwheels-dataset/PakWheels Dataset.csv", "pakwheels-dataset/cleaned_one_column.csv", single_column=True)
