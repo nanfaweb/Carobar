@@ -1,0 +1,86 @@
+2026-05-08 14:21:11,692 [INFO] Warming up session (visiting homepage)...
+2026-05-08 14:21:11,693 [INFO] Fetching (attempt 1): https://www.pakwheels.com
+2026-05-08 14:21:15,843 [INFO] Fetching (attempt 1): https://www.pakwheels.com/used-cars/search/?page=1
+2026-05-08 14:21:17,677 [INFO] Detected 1 pages. Will scrape 1.
+2026-05-08 14:21:17,679 [INFO] Found 0 listing cards on page
+2026-05-08 14:21:17,680 [INFO] Page 1: 0 listings (total: 0)
+2026-05-08 14:21:17,681 [INFO] Saved 0 records to output/pakwheels_20260508_142117.json
+2026-05-08 14:25:58,580 [INFO] Warming up session (visiting homepage)...
+2026-05-08 14:25:58,581 [INFO] Fetching (attempt 1): https://www.pakwheels.com
+2026-05-08 14:26:03,061 [INFO] Fetching (attempt 1): https://www.pakwheels.com/used-cars/search/?page=1
+2026-05-08 14:26:04,457 [INFO] [DEBUG] Raw HTML saved -> debug/page_1.html (open in browser to inspect)
+2026-05-08 14:26:04,458 [INFO] Detected 1 pages. Will scrape 1.
+2026-05-08 14:26:04,461 [WARNING] === Could not find listing cards ===
+2026-05-08 14:26:04,462 [INFO]   - 0 <script> tags found (lots = JS-rendered page)
+2026-05-08 14:26:04,464 [INFO]   - Body preview: '[o�9)l  ��aF�^;DOZ�=���7�ǯ?��c`0��0-���t�=^��ך�\x7f>��K-gˆ,�R�|p�*�f��ij����Z7�w�n��&�1H"�J��V[�Ֆlw�y��\nUdY \n]U E�h��\x7f�$�d�^=��Mͻ/����uv���lJ�A����E�ߛ��??_5�q�Ȩ�Vu+!�c�$��������Ja;�8�����_XJhY,����\r!��9�^�:�ג�S � Z���%вun� Y��S�YN?��~���-K@��6��eOLlY���M�"Ϣ��v�� ﲥd\t\\ .C������LA\ue503dA�m�5BD�{��\t@�hV�0�H���'
+2026-05-08 14:26:04,465 [WARNING] FIX: Run with --debug, open debug/page_1.html in Chrome.
+2026-05-08 14:26:04,465 [WARNING] FIX: Right-click a car card -> Inspect -> copy its class.
+2026-05-08 14:26:04,465 [WARNING] FIX: Add that class to CARD_SELECTORS at the top of scraper.py.
+2026-05-08 14:26:04,465 [INFO] Page 1: 0 listings (total: 0)
+2026-05-08 14:26:04,467 [INFO] Saved 0 records -> output/pakwheels_20260508_142604.json
+2026-05-08 14:26:04,467 [INFO] Done! Scraped 0 listings.
+2026-05-08 14:26:04,467 [INFO] JSON -> output/pakwheels_20260508_142604.json
+2026-05-08 14:26:04,468 [INFO] CSV  -> output/pakwheels_20260508_142604.csv
+2026-05-08 14:28:27,826 [INFO] Warming up session (visiting homepage)...
+2026-05-08 14:28:27,826 [INFO] Fetching (attempt 1): https://www.pakwheels.com
+2026-05-08 14:28:32,209 [INFO] Fetching (attempt 1): https://www.pakwheels.com/used-cars/search/?page=1
+2026-05-08 14:28:33,869 [INFO] [DEBUG] Raw HTML saved -> debug/page_1.html (open in browser to inspect)
+2026-05-08 14:28:33,918 [INFO] Detected 5 pages. Will scrape 1.
+2026-05-08 14:28:33,930 [INFO] Auto-detected selector: 'li.classified-listing' (30 cards found)
+2026-05-08 14:28:34,036 [INFO] Parsed 30 valid listings from 30 cards
+2026-05-08 14:28:34,037 [INFO] Page 1: 30 listings (total: 30)
+2026-05-08 14:28:34,039 [INFO] Saved 30 records -> output/pakwheels_20260508_142834.json
+2026-05-08 14:28:34,054 [INFO] Saved 30 records -> output/pakwheels_20260508_142834.csv
+2026-05-08 14:28:34,054 [INFO] Done! Scraped 30 listings.
+2026-05-08 14:28:34,055 [INFO] JSON -> output/pakwheels_20260508_142834.json
+2026-05-08 14:28:34,056 [INFO] CSV  -> output/pakwheels_20260508_142834.csv
+2026-05-08 14:57:52,031 [INFO] Warming up session (visiting homepage)...
+2026-05-08 14:57:52,031 [INFO] Fetching (attempt 1): https://www.pakwheels.com
+2026-05-08 14:57:57,084 [INFO] Fetching (attempt 1): https://www.pakwheels.com/used-cars/search/?page=1
+2026-05-08 14:57:59,550 [INFO] [DEBUG] Raw HTML saved -> debug/page_1.html (open in browser to inspect)
+2026-05-08 14:57:59,601 [INFO] Detected 5 pages. Will scrape 1.
+2026-05-08 14:57:59,611 [INFO] Auto-detected selector: 'li.classified-listing' (26 cards found)
+2026-05-08 14:57:59,655 [INFO] Parsed 26 valid listings from 26 cards
+2026-05-08 14:57:59,655 [INFO] Page 1: 26 listings (total: 26)
+2026-05-08 14:57:59,658 [INFO] Saved 26 records -> output/pakwheels_20260508_145759.json
+2026-05-08 14:57:59,661 [INFO] Saved 26 records -> output/pakwheels_20260508_145759.csv
+2026-05-08 14:57:59,661 [INFO] Done! Scraped 26 listings.
+2026-05-08 14:57:59,661 [INFO] JSON -> output/pakwheels_20260508_145759.json
+2026-05-08 14:57:59,661 [INFO] CSV  -> output/pakwheels_20260508_145759.csv
+2026-05-08 15:03:04,378 [INFO] Warming up session (visiting homepage)...
+2026-05-08 15:03:04,378 [INFO] Fetching (attempt 1): https://www.pakwheels.com
+2026-05-08 15:03:09,464 [INFO] Fetching (attempt 1): https://www.pakwheels.com/used-cars/search/?page=1
+2026-05-08 15:03:11,220 [INFO] Detected 5 pages. Will scrape 1.
+2026-05-08 15:03:11,231 [INFO] Auto-detected selector: 'li.classified-listing' (30 cards found)
+2026-05-08 15:03:11,279 [INFO] Parsed 30 valid listings from 30 cards
+2026-05-08 15:03:11,280 [INFO] Page 1: 30 listings (total: 30)
+2026-05-08 15:03:11,281 [INFO] Saved 30 records -> output/pakwheels_20260508_150311.json
+2026-05-08 15:03:11,285 [INFO] Saved 30 records -> output/pakwheels_20260508_150311.csv
+2026-05-08 15:03:11,286 [INFO] Done! Scraped 30 listings.
+2026-05-08 15:03:11,286 [INFO] JSON -> output/pakwheels_20260508_150311.json
+2026-05-08 15:03:11,286 [INFO] CSV  -> output/pakwheels_20260508_150311.csv
+2026-05-08 15:03:44,080 [INFO] Warming up session (visiting homepage)...
+2026-05-08 15:03:44,081 [INFO] Fetching (attempt 1): https://www.pakwheels.com
+2026-05-08 15:03:48,975 [INFO] Fetching (attempt 1): https://www.pakwheels.com/used-cars/search/?page=1
+2026-05-08 15:03:50,642 [INFO] Detected 5 pages. Will scrape 5.
+2026-05-08 15:03:50,652 [INFO] Auto-detected selector: 'li.classified-listing' (27 cards found)
+2026-05-08 15:03:50,709 [INFO] Parsed 27 valid listings from 27 cards
+2026-05-08 15:03:50,710 [INFO] Page 1: 27 listings (total: 27)
+2026-05-08 15:03:50,710 [INFO] Waiting 3.7s...
+2026-05-08 15:03:54,440 [INFO] Fetching (attempt 1): https://www.pakwheels.com/used-cars/search/?page=2
+2026-05-08 15:03:56,359 [INFO] Auto-detected selector: 'li.classified-listing' (30 cards found)
+2026-05-08 15:03:56,416 [INFO] Parsed 30 valid listings from 30 cards
+2026-05-08 15:03:56,416 [INFO] Page 2: 30 listings (total: 57)
+2026-05-08 15:03:56,417 [INFO] Waiting 3.5s...
+2026-05-08 15:07:06,459 [INFO] Warming up session (visiting homepage)...
+2026-05-08 15:07:06,459 [INFO] Fetching (attempt 1): https://www.pakwheels.com
+2026-05-08 15:07:10,985 [INFO] Fetching (attempt 1): https://www.pakwheels.com/used-cars/search/?page=1
+2026-05-08 15:07:13,373 [INFO] Detected 5 pages. Will scrape 1.
+2026-05-08 15:07:13,383 [INFO] Auto-detected selector: 'li.classified-listing' (25 cards found)
+2026-05-08 15:07:13,422 [INFO] Parsed 25 valid listings from 25 cards
+2026-05-08 15:07:13,422 [INFO] Page 1: 25 listings (total: 25)
+2026-05-08 15:07:13,448 [INFO] Saved 25 records -> output/pakwheels_20260508_150713.json
+2026-05-08 15:07:13,451 [INFO] Saved 25 records -> output/pakwheels_20260508_150713.csv
+2026-05-08 15:07:13,451 [INFO] Done! Scraped 25 listings.
+2026-05-08 15:07:13,452 [INFO] JSON -> output/pakwheels_20260508_150713.json
+2026-05-08 15:07:13,452 [INFO] CSV  -> output/pakwheels_20260508_150713.csv
