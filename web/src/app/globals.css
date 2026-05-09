@@ -1,26 +1,90 @@
 @import "tailwindcss";
 
+/* ── Custom Design Tokens ────────────────────────────────── */
+@theme {
+  --color-brand-400: #a78bfa;
+  --color-brand-500: #8b5cf6;
+  --color-brand-600: #7c3aed;
+  --color-dark-900:  #050505;
+  --color-dark-800:  #121212;
+  --color-dark-700:  #1f1f1f;
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+/* ── Base ────────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --glass-bg:     rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.10);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+html { color-scheme: dark; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: #050505;
+  color: #ededed;
+  font-family: 'Inter', sans-serif;
+  min-height: 100vh;
+  background-image:
+    radial-gradient(circle at 15% 50%, rgba(139,92,246,.15), transparent 25%),
+    radial-gradient(circle at 85% 30%, rgba(56,189,248,.15),  transparent 25%);
+  background-attachment: fixed;
 }
+
+/* ── Utility: glass card ─────────────────────────────────── */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 4px 30px rgba(0,0,0,.15);
+}
+
+/* ── Utility: glass input ────────────────────────────────── */
+.glass-input {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.10);
+  color: white;
+  transition: border-color .25s, background .25s, box-shadow .25s;
+}
+.glass-input::placeholder { color: rgba(255,255,255,.3); }
+.glass-input:focus {
+  outline: none;
+  border-color: #8b5cf6;
+  background: rgba(255,255,255,.07);
+  box-shadow: 0 0 0 3px rgba(139,92,246,.25);
+}
+
+/* ── Utility: buttons ────────────────────────────────────── */
+.btn-primary {
+  background: linear-gradient(135deg, #8b5cf6, #3b82f6);
+  color: white;
+  transition: transform .2s, box-shadow .2s;
+}
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(139,92,246,.40);
+}
+.btn-primary:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-secondary {
+  background: rgba(255,255,255,.08);
+  color: white;
+  border: 1px solid rgba(255,255,255,.12);
+  transition: background .2s, transform .2s;
+}
+.btn-secondary:hover {
+  background: rgba(255,255,255,.14);
+  transform: translateY(-2px);
+}
+
+/* ── Animations ──────────────────────────────────────────── */
+.animate-fade-in  { animation: fadeIn  .5s ease-out both; }
+.animate-slide-up { animation: slideUp .5s ease-out both; }
+
+@keyframes fadeIn  { from { opacity:0 } to { opacity:1 } }
+@keyframes slideUp { from { opacity:0; transform:translateY(20px) } to { opacity:1; transform:translateY(0) } }

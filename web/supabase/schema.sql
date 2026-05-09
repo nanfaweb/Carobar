@@ -115,3 +115,32 @@ AS $$
   ORDER BY embedding <=> query_embedding
   LIMIT match_count;
 $$;
+
+
+-- ------------------------------------------------------------
+-- 6. User Favorites
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS favorites (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  listing_id BIGINT REFERENCES listings(listing_id) ON DELETE CASCADE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, listing_id)
+);
+
+-- Enable RLS
+ALTER TABLE favorites ENABLE ROW LEVEL SECURITY;
+
+-- Policies
+CREATE POLICY "Users can view their own favorites"
+  ON favorites FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own favorites"
+  ON favorites FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own favorites"
+  ON favorites FOR DELETE
+  USING (auth.uid() = user_id);

@@ -1,0 +1,3 @@
+@echo off
+echo Starting Carobar RAG Backend...
+uvicorn backend.main:app --reload --port 8000
