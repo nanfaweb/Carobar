@@ -34,10 +34,7 @@ if sys.platform == "win32":
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler("scraper.log", encoding="utf-8"),
-    ],
+    handlers=[logging.StreamHandler(sys.stderr)],
 )
 log = logging.getLogger(__name__)
 
@@ -110,16 +107,25 @@ def get_headers() -> dict:
 
 # ── URL Builder ────────────────────────────────────────────────────────────────
 def build_url(page: int = 1, city: str = None, make: str = None, max_price: int = None) -> str:
+    # Use the specific search path you found
+    url_base = f"{BASE_URL}/used-cars/search/-/"
+    
     params = []
     if make:
-        params.append(f"make_{make.lower()}")
-    if city and city.lower() in CITIES:
-        params.append(CITIES[city.lower()])
+        # Use the mk_ prefix
+        params.append(f"mk_{make.lower()}")
+    if city:
+        # Use the ct_ prefix
+        params.append(f"ct_{city.lower()}")
     if max_price:
-        params.append(f"price_0_{max_price}")
+        # Use the pr_ prefix for price ranges
+        params.append(f"pr_0_{max_price}")
 
+    # Join with slashes and add a trailing slash
     filter_str = "/".join(params) + "/" if params else ""
-    url = f"{BASE_URL}/used-cars/search/{filter_str}?page={page}"
+    
+    # Construct final URL with the page parameter
+    url = f"{url_base}{filter_str}?page={page}"
     return url
 
 
@@ -376,35 +382,15 @@ def get_total_pages(soup: BeautifulSoup) -> int:
     except Exception:
         return 1
 
-
-# ── Savers ─────────────────────────────────────────────────────────────────────
-def save_json(data: list[dict], filepath: str):
-    with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    log.info(f"Saved {len(data)} records -> {filepath}")
-
-
-def save_csv(data: list[dict], filepath: str):
-    if not data:
-        return
-    with open(filepath, "w", newline="", encoding="utf-8-sig") as f:  # utf-8-sig = Excel-friendly
-        writer = csv.DictWriter(f, fieldnames=data[0].keys())
-        writer.writeheader()
-        writer.writerows(data)
-    log.info(f"Saved {len(data)} records -> {filepath}")
-
-
 # ── Main ───────────────────────────────────────────────────────────────────────
 def scrape(
     pages:      int  = 5,
     city:       str  = None,
     make:       str  = None,
     max_price:  int  = None,
-    output_dir: str  = "output",
     debug:      bool = False,
 ) -> list[dict]:
 
-    Path(output_dir).mkdir(exist_ok=True)
     session      = make_session()
     all_listings = []
 
@@ -453,15 +439,7 @@ def scrape(
             log.info(f"Long break: {pause:.1f}s")
             time.sleep(pause)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    json_path = f"{output_dir}/pakwheels_{timestamp}.json"
-    csv_path  = f"{output_dir}/pakwheels_{timestamp}.csv"
-    save_json(all_listings, json_path)
-    save_csv(all_listings, csv_path)
-
     log.info(f"Done! Scraped {len(all_listings)} listings.")
-    log.info(f"JSON -> {json_path}")
-    log.info(f"CSV  -> {csv_path}")
 
     return all_listings
 
@@ -473,15 +451,16 @@ if __name__ == "__main__":
     parser.add_argument("--city",      type=str,                   help=f"City: {', '.join(CITIES.keys())}")
     parser.add_argument("--make",      type=str,                   help="Make: toyota, honda, suzuki ...")
     parser.add_argument("--max-price", type=int,                   help="Max price in PKR (e.g. 2000000)")
-    parser.add_argument("--output",    type=str, default="output", help="Output dir (default: output)")
     parser.add_argument("--debug",     action="store_true",        help="Save raw HTML to debug/ folder")
     args = parser.parse_args()
 
-    scrape(
+    results = scrape(
         pages=args.pages,
         city=args.city,
         make=args.make,
         max_price=args.max_price,
-        output_dir=args.output,
         debug=args.debug,
     )
+
+    sys.stdout.write(json.dumps(results, ensure_ascii=False))
+    sys.stdout.flush()
