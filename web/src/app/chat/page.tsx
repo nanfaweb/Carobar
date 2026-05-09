@@ -8,6 +8,7 @@ import {
   LogOut, Home, Menu, X, MessageSquare, AlertCircle
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import ReactMarkdown from 'react-markdown';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -343,7 +344,17 @@ function MessageBubble({
           }`}
         >
           {msg.error && <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />}
-          {msg.content}
+          <ReactMarkdown
+            components={{
+              img: ({ node, ...props }) => (
+                <img {...props} className="max-w-full rounded-lg my-2 max-h-60 object-cover" />
+              ),
+              p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
+              a: ({ node, ...props }) => <a className="text-[#8b5cf6] hover:underline" {...props} />
+            }}
+          >
+            {msg.content}
+          </ReactMarkdown>
         </div>
 
         {/* Car result cards */}

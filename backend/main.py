@@ -83,12 +83,14 @@ def build_context(cars: list[dict]) -> str:
 
     lines = ["Here are the most relevant car listings from the database:\n"]
     for i, c in enumerate(cars, 1):
+        image_url = c.get('hero_image', '')
         lines.append(
             f"{i}. **{c.get('title', 'N/A')}** ({c.get('year', 'N/A')})\n"
             f"   - Price: {c.get('price_display', 'N/A')}\n"
             f"   - Mileage: {c.get('mileage_km', 'N/A'):,} km\n"
             f"   - Fuel: {c.get('fuel_type', 'N/A')} | Transmission: {c.get('transmission', 'N/A')}\n"
             f"   - Location: {c.get('location', 'N/A')}\n"
+            f"   - Image URL: {image_url}\n"
             f"   - Listing ID: {c.get('listing_id')}\n"
         )
     return "\n".join(lines)
@@ -99,6 +101,7 @@ def build_system_prompt(context: str) -> str:
 You have access to real, live car listings retrieved from the Carobar database.
 Always ground your answers in the provided listings.
 Be concise, friendly, and helpful. Format prices in PKR.
+When describing a car, always include its image using Markdown image syntax if an Image URL is provided. Example: ![Car Name](Image URL).
 If the user asks something unrelated to cars, politely redirect them.
 
 {context}
