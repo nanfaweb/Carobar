@@ -103,7 +103,8 @@ function LoginModal({ onClose }: { onClose: () => void }) {
 
 export default function ChatPage() {
   const WELCOME: Message = {
-    id: '0',
+    id: 'welcome-message',
+
     role: 'assistant',
     content:
       'Hi! I\'m your Carobar AI assistant, powered by real car listings. Try asking me:\n\n• "Show me Honda Civics under PKR 5 million"\n• "Best automatic cars in Lahore"\n• "Compare Toyota Corolla vs Honda City"',
@@ -174,8 +175,9 @@ export default function ChatPage() {
 
       if (data?.messages && Array.isArray(data.messages) && data.messages.length > 0) {
         // Restore saved messages, but regenerate IDs so React keys are stable
-        const restored = (data.messages as Message[]).map((m, i) => ({ ...m, id: String(i) }));
+        const restored = (data.messages as Message[]).map((m, i) => ({ ...m, id: `saved-${i}-${Date.now()}` }));
         setMessages([WELCOME, ...restored]);
+
       }
     } catch {
       // No existing conversation — that's fine
@@ -767,8 +769,10 @@ function PriceAnalyzerModal({ car, loading, result, showNegotiation, setShowNego
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <div className="relative glass-panel rounded-3xl p-6 max-w-md w-full animate-slide-up border border-[#8b5cf6]/20 shadow-2xl shadow-[#8b5cf6]/20"
+      <div className="relative glass-panel rounded-3xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto no-scrollbar animate-slide-up border border-[#8b5cf6]/20 shadow-2xl shadow-[#8b5cf6]/20"
         onClick={e => e.stopPropagation()}>
+
+
         <button onClick={onClose} className="absolute top-4 right-4 p-2 rounded-full text-gray-400 hover:text-white hover:bg-white/10">
           <X className="w-4 h-4" />
         </button>

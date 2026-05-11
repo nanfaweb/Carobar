@@ -363,6 +363,8 @@ def get_recommendations(req: RecommendationsRequest):
         for i, c in enumerate(top_cars)
     )
 
+    format_instructions = "\n".join([f"MATCH{i+1}: <reason for car {i+1}>" for i in range(len(top_cars))])
+    
     prompt = f"""User Profile:
 {profile_summary}
 
@@ -372,9 +374,8 @@ Top recommended cars:
 For each car write 1-2 warm sentences explaining WHY it specifically matches this user's commute, family size, budget and priorities.
 
 Format EXACTLY as:
-MATCH1: <reason for car 1>
-MATCH2: <reason for car 2>
-MATCH3: <reason for car 3>"""
+{format_instructions}"""
+
 
     matches: dict[str, str] = {"MATCH1": "", "MATCH2": "", "MATCH3": ""}
     try:
@@ -410,7 +411,8 @@ MATCH3: <reason for car 3>"""
             matches[key] = defaults[i]
 
     result = [
-        {**car, "why_match": matches.get(f"MATCH{i+1}", "Great match for your profile.")}
+        {**car, "why_match": matches.get(f"MATCH{i+1}") or "Great match for your profile."}
         for i, car in enumerate(top_cars)
     ]
+
     return RecommendationsResponse(recommendations=result)
