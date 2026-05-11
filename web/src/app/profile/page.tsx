@@ -117,8 +117,18 @@ export default function ProfilePage() {
     <div className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center p-4 relative overflow-hidden">
       <div className="absolute top-[-20%] left-[10%] w-[500px] h-[500px] bg-[#8b5cf6]/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[10%] w-[400px] h-[400px] bg-blue-500/10 rounded-full blur-[120px] pointer-events-none" />
+      
+      {/* Back Button */}
+      <button 
+        onClick={() => router.back()}
+        className="absolute top-6 left-6 p-3 rounded-2xl glass-panel text-gray-400 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 group z-50"
+      >
+        <ChevronLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+        <span className="text-sm font-medium pr-1">Back</span>
+      </button>
 
       <div className="w-full max-w-lg z-10">
+
         {/* Header */}
         <div className="text-center mb-8">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#8b5cf6] to-blue-500 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-[#8b5cf6]/30">

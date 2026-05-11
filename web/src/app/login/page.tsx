@@ -3,12 +3,15 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Car, Mail, Lock, ArrowRight, Loader2 } from 'lucide-react';
+import { Car, Mail, Lock, ArrowRight, Loader2, Eye, EyeOff, ChevronLeft } from 'lucide-react';
+
 import { supabase } from '@/lib/supabase';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -42,6 +45,16 @@ export default function LoginPage() {
         <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-brand-500/20 rounded-full blur-[100px]"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-500/20 rounded-full blur-[100px]"></div>
       </div>
+      
+      {/* Back Button */}
+      <button 
+        onClick={() => router.back()}
+        className="absolute top-6 left-6 p-3 rounded-2xl glass-panel text-gray-400 hover:text-white hover:bg-white/10 transition-all flex items-center gap-2 group z-50"
+      >
+        <ChevronLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+        <span className="text-sm font-medium pr-1">Back</span>
+      </button>
+
 
       <div className="w-full max-w-md animate-slide-up">
         <div className="text-center mb-8 flex flex-col items-center">
@@ -87,13 +100,21 @@ export default function LoginPage() {
                   <Lock className="h-5 w-5 text-gray-500" />
                 </div>
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full glass-input pl-11 pr-4 py-3 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none transition-all"
+                  className="w-full glass-input pl-11 pr-12 py-3 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none transition-all"
                   placeholder="••••••••"
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-500 hover:text-gray-300 transition-colors"
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+
               </div>
             </div>
 

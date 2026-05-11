@@ -6,8 +6,9 @@ import { useRouter } from 'next/navigation';
 import {
   Car, Send, Star, StarOff, User, Bot,
   LogOut, Home, Menu, X, MessageSquare, AlertCircle, Sparkles,
-  TrendingUp, TrendingDown, Minus, Copy, Check, Brain, Loader2, UserCircle2
+  TrendingUp, TrendingDown, Minus, Copy, Check, Brain, Loader2, UserCircle2, ChevronLeft
 } from 'lucide-react';
+
 import { supabase } from '@/lib/supabase';
 import ReactMarkdown from 'react-markdown';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
@@ -479,13 +480,26 @@ export default function ChatPage() {
         <main className="flex-1 flex flex-col min-w-0 h-full">
           {/* Header */}
           <header className="h-16 glass-panel border-b border-white/10 flex items-center px-4 shrink-0 z-10 justify-between">
-            <div className="flex items-center gap-3 md:hidden">
-              <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-gray-400 hover:text-white rounded-xl hover:bg-white/5">
-                <Menu className="w-6 h-6" />
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => router.back()}
+                className="p-2 text-gray-400 hover:text-white rounded-xl hover:bg-white/5 transition-colors group flex items-center gap-1"
+                title="Go back"
+              >
+                <ChevronLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
+                <span className="text-xs font-medium hidden sm:inline">Back</span>
               </button>
-              <span className="font-bold text-white">Carobar</span>
+              
+              <div className="flex items-center gap-3 md:hidden">
+                <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-gray-400 hover:text-white rounded-xl hover:bg-white/5">
+                  <Menu className="w-6 h-6" />
+                </button>
+                <span className="font-bold text-white">Carobar</span>
+              </div>
             </div>
+            
             <div className="hidden md:flex items-center gap-2 text-gray-400 text-sm">
+
               {user ? (
                 <span className="text-gray-500">Chatting as <span className="text-gray-300">{user.email}</span></span>
               ) : (

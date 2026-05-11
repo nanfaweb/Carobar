@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Car, Star, Trash2, Home, ArrowLeft, Loader2, LogOut, MessageSquare, Lock } from 'lucide-react';
+import { Car, Star, Trash2, Home, ArrowLeft, Loader2, LogOut, MessageSquare, Lock, ChevronLeft } from 'lucide-react';
+
 import { supabase } from '@/lib/supabase';
 import type { User } from '@supabase/supabase-js';
 
@@ -96,9 +97,15 @@ export default function FavoritesPage() {
       {/* Navbar */}
       <nav className="w-full glass-panel py-4 px-6 md:px-12 flex justify-between items-center sticky top-0 z-50">
         <div className="flex items-center gap-4">
-          <Link href="/chat" className="p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors text-gray-300 hover:text-white">
-            <ArrowLeft className="w-5 h-5" />
-          </Link>
+          <button 
+            onClick={() => router.back()}
+            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors text-gray-300 hover:text-white flex items-center gap-1 group"
+            title="Go back"
+          >
+            <ChevronLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
+            <span className="text-xs font-medium hidden sm:inline pr-1">Back</span>
+          </button>
+
           <div className="flex items-center gap-2">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center shadow-lg shadow-yellow-500/20">
               <Star className="text-white w-5 h-5" />
