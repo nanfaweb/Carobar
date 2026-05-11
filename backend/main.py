@@ -1,8 +1,9 @@
 """
 Carobar RAG Backend — FastAPI
-Receives a user chat message, generates an embedding, retrieves top-K
-matching car listings from Supabase, then asks Groq (llama-3.3-70b-versatile)
-to craft a natural-language reply grounded in those listings.
+Endpoints:
+  POST /chat           — RAG chat with car listings
+  POST /analyze-price  — AI fair-price verdict + negotiation draft
+  POST /recommendations — Personalised car matches from user profile
 
 Start:  uvicorn backend.main:app --reload --port 8000
 """
@@ -25,16 +26,16 @@ from groq import Groq
 
 load_dotenv("web/.env.local")
 
-SUPABASE_URL = os.getenv("NEXT_PUBLIC_SUPABASE_URL", "")
+SUPABASE_URL    = os.getenv("NEXT_PUBLIC_SUPABASE_URL", "")
 SUPABASE_ANON_KEY = os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "")
-GROQ_API_KEY   = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL     = "llama-3.3-70b-versatile"
-EMBEDDING_MODEL = "all-mpnet-base-v2"   # MUST match what supabase_sync.py used
-MATCH_COUNT = 5
-MATCH_THRESHOLD = 0.35                  # cosine-similarity lower bound
+GROQ_API_KEY    = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL      = "llama-3.3-70b-versatile"
+EMBEDDING_MODEL = "all-mpnet-base-v2"
+MATCH_COUNT     = 5
+MATCH_THRESHOLD = 0.35
 
 # ---------------------------------------------------------------------------
-# Lazy singletons (loaded once on first request)
+# Lazy singletons
 # ---------------------------------------------------------------------------
 
 @lru_cache(maxsize=1)
@@ -46,11 +47,16 @@ def get_embedder() -> SentenceTransformer:
 def get_supabase() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
+def get_groq_client() -> Groq:
+    if not GROQ_API_KEY:
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured")
+    return Groq(api_key=GROQ_API_KEY)
+
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="Carobar RAG API", version="1.0.0")
+app = FastAPI(title="Carobar RAG API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -66,31 +72,90 @@ app.add_middleware(
 
 class ChatRequest(BaseModel):
     message: str
-    history: list[dict[str, str]] = []   # [{"role": "user"|"assistant", "content": "..."}]
+    history: list[dict[str, str]] = []
 
 class ChatResponse(BaseModel):
     reply: str
     cars: list[dict[str, Any]]
 
+class PriceAnalysisRequest(BaseModel):
+    listing_id: int
+    title: str
+    make: str
+    model: str
+    year: int
+    price_pkr: int
+    mileage_km: int
+    fuel_type: str
+    transmission: str
+    location: str = ""
+
+class PriceAnalysisResponse(BaseModel):
+    verdict: str              # "Great Deal" | "Fair Price" | "Overpriced"
+    avg_similar_price: int
+    similar_count: int
+    price_difference: int
+    price_difference_pct: float
+    analysis: str
+    negotiation_message: str
+
+class UserProfileData(BaseModel):
+    budget_max: int
+    commute_km: int
+    family_size: int
+    fuel_preference: str
+    transmission_preference: str
+    priorities: list[str]
+
+class RecommendationsRequest(BaseModel):
+    profile: UserProfileData
+
+class RecommendedCar(BaseModel):
+    listing_id: int
+    title: str
+    make: str
+    model: str
+    year: int
+    price_pkr: int
+    price_display: str
+    mileage_km: int
+    fuel_type: str
+    transmission: str
+    location: str
+    hero_image: str | None
+    listing_url: str | None
+    similarity: float | None
+    why_match: str
+
+class RecommendationsResponse(BaseModel):
+    recommendations: list[dict[str, Any]]
+
 # ---------------------------------------------------------------------------
-# Helpers
+# Shared helpers
 # ---------------------------------------------------------------------------
+
+def retrieve_listings(query: str, count: int = MATCH_COUNT) -> list[dict]:
+    embedder  = get_embedder()
+    embedding = embedder.encode(query).tolist()
+    result = get_supabase().rpc(
+        "match_listings",
+        {"query_embedding": embedding, "match_count": count, "match_threshold": MATCH_THRESHOLD},
+    ).execute()
+    return result.data or []
+
 
 def build_context(cars: list[dict]) -> str:
-    """Turn retrieved listings into a compact markdown table for the LLM."""
     if not cars:
         return "No matching listings found in the database."
-
     lines = ["Here are the most relevant car listings from the database:\n"]
     for i, c in enumerate(cars, 1):
-        image_url = c.get('hero_image', '')
         lines.append(
-            f"{i}. **{c.get('title', 'N/A')}** ({c.get('year', 'N/A')})\n"
-            f"   - Price: {c.get('price_display', 'N/A')}\n"
-            f"   - Mileage: {c.get('mileage_km', 'N/A'):,} km\n"
-            f"   - Fuel: {c.get('fuel_type', 'N/A')} | Transmission: {c.get('transmission', 'N/A')}\n"
-            f"   - Location: {c.get('location', 'N/A')}\n"
-            f"   - Image URL: {image_url}\n"
+            f"{i}. **{c.get('title','N/A')}** ({c.get('year','N/A')})\n"
+            f"   - Price: {c.get('price_display','N/A')}\n"
+            f"   - Mileage: {c.get('mileage_km',0):,} km\n"
+            f"   - Fuel: {c.get('fuel_type','N/A')} | Transmission: {c.get('transmission','N/A')}\n"
+            f"   - Location: {c.get('location','N/A')}\n"
+            f"   - Image URL: {c.get('hero_image','')}\n"
             f"   - Listing ID: {c.get('listing_id')}\n"
         )
     return "\n".join(lines)
@@ -98,57 +163,28 @@ def build_context(cars: list[dict]) -> str:
 
 def build_system_prompt(context: str) -> str:
     return f"""You are Carobar AI, an expert automotive assistant for the Pakistani car market.
-You have access to real, live car listings retrieved from the Carobar database.
-Always ground your answers in the provided listings.
-Be concise, friendly, and helpful. Format prices in PKR.
-When describing a car, always include its image using Markdown image syntax if an Image URL is provided. Example: ![Car Name](Image URL).
+Always ground your answers in the provided listings. Be concise, friendly, and helpful.
+Format prices in PKR. When describing a car, include its image using Markdown image syntax
+if an Image URL is provided. Example: ![Car Name](Image URL).
 If the user asks something unrelated to cars, politely redirect them.
 
 {context}
 """
 
 
-def retrieve_listings(query: str) -> list[dict]:
-    """Embed the query and call the pgvector match_listings function."""
-    embedder = get_embedder()
-    embedding = embedder.encode(query).tolist()
-
-    supabase = get_supabase()
-    result = supabase.rpc(
-        "match_listings",
-        {
-            "query_embedding": embedding,
-            "match_count": MATCH_COUNT,
-            "match_threshold": MATCH_THRESHOLD,
-        },
-    ).execute()
-
-    return result.data or []
-
-
-def call_groq(system: str, history: list[dict], user_message: str) -> str:
-    """Call Groq chat completions with conversation history."""
-    if not GROQ_API_KEY:
-        raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured")
-
-    client = Groq(api_key=GROQ_API_KEY)
-
-    # Build messages array: system prompt + history + new user message
+def call_groq(system: str, history: list[dict], user_message: str, max_tokens: int = 1024) -> str:
+    client = get_groq_client()
     messages = [{"role": "system", "content": system}]
     for msg in history:
         messages.append({"role": msg["role"], "content": msg["content"]})
     messages.append({"role": "user", "content": user_message})
-
     response = client.chat.completions.create(
-        model=GROQ_MODEL,
-        messages=messages,
-        temperature=0.7,
-        max_tokens=1024,
+        model=GROQ_MODEL, messages=messages, temperature=0.7, max_tokens=max_tokens,
     )
     return response.choices[0].message.content
 
 # ---------------------------------------------------------------------------
-# Routes
+# Routes — existing
 # ---------------------------------------------------------------------------
 
 @app.get("/health")
@@ -158,17 +194,223 @@ def health():
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
-    # 1. Retrieve relevant listings
-    cars = retrieve_listings(req.message)
-
-    # 2. Build context + system prompt
-    context = build_context(cars)
-    system = build_system_prompt(context)
-
-    # 3. Call Groq
+    cars   = retrieve_listings(req.message)
+    system = build_system_prompt(build_context(cars))
     try:
         reply = call_groq(system, req.history, req.message)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc))
-
     return ChatResponse(reply=reply, cars=cars)
+
+# ---------------------------------------------------------------------------
+# Route — Price Analyzer
+# ---------------------------------------------------------------------------
+
+@app.post("/analyze-price", response_model=PriceAnalysisResponse)
+def analyze_price(req: PriceAnalysisRequest):
+    """
+    Retrieve similar cars from the vector DB, calculate a market average,
+    produce a verdict, and draft a negotiation message via Groq.
+    """
+    query = f"{req.year} {req.make} {req.model} {req.fuel_type} {req.transmission}"
+    similar_cars = retrieve_listings(query, count=8)
+
+    # Exclude the listing itself
+    others = [
+        c for c in similar_cars
+        if c.get("listing_id") != req.listing_id and c.get("price_pkr")
+    ]
+
+    if others:
+        prices    = [c["price_pkr"] for c in others]
+        avg_price = int(sum(prices) / len(prices))
+    else:
+        avg_price = req.price_pkr
+
+    price_diff     = req.price_pkr - avg_price
+    price_diff_pct = round((price_diff / avg_price * 100) if avg_price > 0 else 0, 1)
+
+    if price_diff_pct < -10:
+        verdict = "Great Deal"
+    elif price_diff_pct > 15:
+        verdict = "Overpriced"
+    else:
+        verdict = "Fair Price"
+
+    similar_lines = "\n".join(
+        f"- {c.get('title','N/A')}: PKR {c.get('price_pkr',0):,}, {c.get('mileage_km',0):,} km"
+        for c in others[:4]
+    ) or "No closely similar listings found in our database."
+
+    diff_label = (
+        f"PKR {price_diff:,} above average ({price_diff_pct}% overpriced)"
+        if price_diff > 0
+        else f"PKR {abs(price_diff):,} below average ({abs(price_diff_pct)}% cheaper)"
+    )
+
+    prompt = f"""Analyze this car vs similar listings in Pakistan:
+
+Listing: {req.title}
+Price: PKR {req.price_pkr:,} | Year: {req.year} | Mileage: {req.mileage_km:,} km
+Fuel: {req.fuel_type} | Transmission: {req.transmission} | Location: {req.location}
+
+Similar cars found:
+{similar_lines}
+
+Market average price: PKR {avg_price:,}
+Price difference: {diff_label}
+Verdict: {verdict}
+
+Write:
+1. A 2-sentence analysis explaining the verdict using the data above.
+2. A polite, data-backed WhatsApp negotiation message to the seller in English.
+
+Format EXACTLY as:
+ANALYSIS: <your 2-sentence analysis>
+NEGOTIATION: <negotiation message>"""
+
+    analysis = negotiation = ""
+    try:
+        client   = get_groq_client()
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": "You are an expert Pakistani automotive market analyst. Be concise and data-driven."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.5,
+            max_tokens=600,
+        )
+        raw = response.choices[0].message.content or ""
+        if "ANALYSIS:" in raw and "NEGOTIATION:" in raw:
+            parts       = raw.split("NEGOTIATION:")
+            analysis    = parts[0].replace("ANALYSIS:", "").strip()
+            negotiation = parts[1].strip()
+        else:
+            analysis    = raw[:400].strip()
+            negotiation = (
+                f"Hi! I'm interested in your {req.title} listed at PKR {req.price_pkr:,}. "
+                f"I noticed similar {req.year} {req.make} {req.model}s are available around "
+                f"PKR {avg_price:,}. Would you consider adjusting the price? I'm a serious buyer. Thank you!"
+            )
+    except Exception:
+        analysis = f"This listing is a {verdict.lower()} compared to similar cars in our database."
+        negotiation = (
+            f"Hi! I'm interested in your {req.title}. Could you consider a lower price? "
+            f"Similar listings are around PKR {avg_price:,}. I'm ready to buy. Thank you!"
+        )
+
+    return PriceAnalysisResponse(
+        verdict=verdict,
+        avg_similar_price=avg_price,
+        similar_count=len(others),
+        price_difference=price_diff,
+        price_difference_pct=price_diff_pct,
+        analysis=analysis,
+        negotiation_message=negotiation,
+    )
+
+# ---------------------------------------------------------------------------
+# Route — Smart Recommendations
+# ---------------------------------------------------------------------------
+
+@app.post("/recommendations", response_model=RecommendationsResponse)
+def get_recommendations(req: RecommendationsRequest):
+    """
+    Build a natural-language query from the user's lifestyle profile,
+    retrieve top matching cars, then generate personalised 'why this fits you'
+    explanations via Groq.
+    """
+    p = req.profile
+
+    fuel  = p.fuel_preference if p.fuel_preference.lower() != "any" else ""
+    trans = p.transmission_preference if p.transmission_preference.lower() != "any" else ""
+    prios = ", ".join(p.priorities) if p.priorities else "reliable affordable"
+
+    commute_desc = (
+        "long-distance fuel efficient highway"  if p.commute_km > 50
+        else "moderate commute city"            if p.commute_km > 20
+        else "short city driving"
+    )
+    family_desc = (
+        "large family 7-seater SUV"  if p.family_size >= 5
+        else "family sedan spacious" if p.family_size >= 3
+        else "compact"
+    )
+
+    query = f"{fuel} {trans} {family_desc} {commute_desc} {prios} budget PKR {p.budget_max:,}".strip()
+    cars  = retrieve_listings(query, count=10)
+
+    # Filter to budget
+    affordable = [c for c in cars if c.get("price_pkr", 0) <= p.budget_max]
+    top_cars   = (affordable or cars)[:3]
+
+    if not top_cars:
+        return RecommendationsResponse(recommendations=[])
+
+    profile_summary = (
+        f"- Budget: up to PKR {p.budget_max:,}\n"
+        f"- Daily commute: {p.commute_km} km\n"
+        f"- Family size: {p.family_size} people\n"
+        f"- Fuel preference: {p.fuel_preference}\n"
+        f"- Transmission: {p.transmission_preference}\n"
+        f"- Priorities: {prios}"
+    )
+    cars_text = "\n".join(
+        f"{i+1}. {c.get('title','N/A')} — PKR {c.get('price_pkr',0):,}, "
+        f"{c.get('mileage_km',0):,} km, {c.get('fuel_type','N/A')}, "
+        f"{c.get('transmission','N/A')}, {c.get('location','N/A')}"
+        for i, c in enumerate(top_cars)
+    )
+
+    prompt = f"""User Profile:
+{profile_summary}
+
+Top recommended cars:
+{cars_text}
+
+For each car write 1-2 warm sentences explaining WHY it specifically matches this user's commute, family size, budget and priorities.
+
+Format EXACTLY as:
+MATCH1: <reason for car 1>
+MATCH2: <reason for car 2>
+MATCH3: <reason for car 3>"""
+
+    matches: dict[str, str] = {"MATCH1": "", "MATCH2": "", "MATCH3": ""}
+    try:
+        client   = get_groq_client()
+        response = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": "You are a personal car buying advisor. Give warm, personalised recommendations."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.6,
+            max_tokens=400,
+        )
+        raw = response.choices[0].message.content or ""
+        for key in matches:
+            tag = f"{key}:"
+            if tag in raw:
+                start = raw.index(tag) + len(tag)
+                rest  = raw[start:]
+                # find next MATCH tag
+                end = len(rest)
+                for other in matches:
+                    if other != key and f"{other}:" in rest:
+                        end = min(end, rest.index(f"{other}:"))
+                matches[key] = rest[:end].strip()
+    except Exception:
+        defaults = [
+            "A great fit within your budget and priorities.",
+            "Matches your commute and family needs well.",
+            "Fits your preferences and lifestyle perfectly.",
+        ]
+        for i, key in enumerate(matches):
+            matches[key] = defaults[i]
+
+    result = [
+        {**car, "why_match": matches.get(f"MATCH{i+1}", "Great match for your profile.")}
+        for i, car in enumerate(top_cars)
+    ]
+    return RecommendationsResponse(recommendations=result)

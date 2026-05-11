@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Car, Send, Star, StarOff, User, Bot,
-  LogOut, Home, Menu, X, MessageSquare, AlertCircle, Sparkles
+  LogOut, Home, Menu, X, MessageSquare, AlertCircle, Sparkles,
+  TrendingUp, TrendingDown, Minus, Copy, Check, Brain, Loader2, UserCircle2
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import ReactMarkdown from 'react-markdown';
@@ -39,6 +40,18 @@ type Message = {
 };
 
 type HistoryEntry = { role: 'user' | 'assistant'; content: string };
+
+type PriceAnalysisResult = {
+  verdict: 'Great Deal' | 'Fair Price' | 'Overpriced';
+  avg_similar_price: number;
+  similar_count: number;
+  price_difference: number;
+  price_difference_pct: number;
+  analysis: string;
+  negotiation_message: string;
+};
+
+type RecommendedCar = CarListing & { why_match: string };
 
 // ─── Login Modal ──────────────────────────────────────────────────────────────
 
@@ -107,6 +120,15 @@ export default function ChatPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
+  const [analyzerCar,     setAnalyzerCar]     = useState<CarListing | null>(null);
+  const [analyzerLoading, setAnalyzerLoading] = useState(false);
+  const [analyzerResult,  setAnalyzerResult]  = useState<PriceAnalysisResult | null>(null);
+  const [showNegotiation, setShowNegotiation] = useState(false);
+  const [copied,          setCopied]          = useState(false);
+  const [recommendations, setRecommendations] = useState<RecommendedCar[]>([]);
+  const [recsLoading,     setRecsLoading]     = useState(false);
+  const [hasProfile,      setHasProfile]      = useState(false);
+
   // ── Auth + initial data load ────────────────────────────────────────────
 
   useEffect(() => {
@@ -119,6 +141,7 @@ export default function ChatPage() {
         await Promise.all([
           loadConversation(currentUser.id),
           loadFavoriteIds(currentUser.id),
+          loadRecommendations(currentUser.id),
         ]);
       }
     };
@@ -177,6 +200,50 @@ export default function ChatPage() {
       .select('listing_id')
       .eq('user_id', userId);
     if (data) setSavedIds(new Set(data.map((r: any) => r.listing_id)));
+  };
+
+  const loadRecommendations = async (userId: string) => {
+    const { data: profile } = await supabase
+      .from('user_profiles').select('*').eq('user_id', userId).single();
+    if (!profile) return;
+    setHasProfile(true);
+    setRecsLoading(true);
+    try {
+      const res = await fetch('/api/recommendations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile: {
+          budget_max: profile.budget_max,
+          commute_km: profile.commute_km,
+          family_size: profile.family_size,
+          fuel_preference: profile.fuel_preference,
+          transmission_preference: profile.transmission_preference,
+          priorities: profile.priorities || [],
+        }}),
+      });
+      if (res.ok) { const d = await res.json(); setRecommendations(d.recommendations || []); }
+    } finally { setRecsLoading(false); }
+  };
+
+  const handleAnalyzePrice = async (car: CarListing) => {
+    setAnalyzerCar(car);
+    setAnalyzerResult(null);
+    setShowNegotiation(false);
+    setCopied(false);
+    setAnalyzerLoading(true);
+    try {
+      const res = await fetch('/api/analyze-price', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          listing_id: car.listing_id, title: car.title, make: car.make,
+          model: car.model, year: car.year, price_pkr: car.price_pkr,
+          mileage_km: car.mileage_km, fuel_type: car.fuel_type,
+          transmission: car.transmission, location: car.location || '',
+        }),
+      });
+      if (res.ok) setAnalyzerResult(await res.json());
+    } finally { setAnalyzerLoading(false); }
   };
 
   // ── Auth actions ────────────────────────────────────────────────────────
@@ -300,6 +367,18 @@ export default function ChatPage() {
   return (
     <>
       {showLoginModal && <LoginModal onClose={() => setShowLoginModal(false)} />}
+      {analyzerCar && (
+        <PriceAnalyzerModal
+          car={analyzerCar}
+          loading={analyzerLoading}
+          result={analyzerResult}
+          showNegotiation={showNegotiation}
+          setShowNegotiation={setShowNegotiation}
+          copied={copied}
+          setCopied={setCopied}
+          onClose={() => setAnalyzerCar(null)}
+        />
+      )}
 
       <div className="flex h-screen overflow-hidden bg-[#050505] text-white">
         {/* Mobile Sidebar Overlay */}
@@ -341,6 +420,11 @@ export default function ChatPage() {
             <Link href="/favorites" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition-colors">
               <Star className="w-5 h-5" />
               Saved Cars
+            </Link>
+            <Link href="/profile" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition-colors">
+              <Brain className="w-5 h-5" />
+              My Profile
+              {hasProfile && <span className="ml-auto w-2 h-2 rounded-full bg-[#8b5cf6]" />}
             </Link>
 
             {/* Clear chat */}
@@ -419,12 +503,22 @@ export default function ChatPage() {
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+            {(hasProfile || recsLoading) && (
+              <ProfileRecommendationsBanner
+                loading={recsLoading}
+                cars={recommendations}
+                savedIds={savedIds}
+                onToggleFavorite={toggleFavorite}
+                onAnalyze={handleAnalyzePrice}
+              />
+            )}
             {messages.map((msg) => (
               <MessageBubble
                 key={msg.id}
                 msg={msg}
                 savedIds={savedIds}
                 onToggleFavorite={toggleFavorite}
+                onAnalyze={handleAnalyzePrice}
               />
             ))}
 
@@ -479,10 +573,12 @@ function MessageBubble({
   msg,
   savedIds,
   onToggleFavorite,
+  onAnalyze,
 }: {
   msg: Message;
   savedIds: Set<number>;
   onToggleFavorite: (car: CarListing) => void;
+  onAnalyze: (car: CarListing) => void;
 }) {
   const isUser = msg.role === 'user';
 
@@ -534,6 +630,7 @@ function MessageBubble({
                 car={car}
                 isSaved={savedIds.has(car.listing_id)}
                 onToggle={() => onToggleFavorite(car)}
+                onAnalyze={() => onAnalyze(car)}
               />
             ))}
           </div>
@@ -549,10 +646,12 @@ function CarCard({
   car,
   isSaved,
   onToggle,
+  onAnalyze,
 }: {
   car: CarListing;
   isSaved: boolean;
   onToggle: () => void;
+  onAnalyze?: () => void;
 }) {
   return (
     <div className="glass-panel overflow-hidden rounded-2xl group hover:border-[#8b5cf6]/50 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#8b5cf6]/10">
@@ -612,16 +711,191 @@ function CarCard({
         </div>
       </div>
 
-      {car.listing_url && (
-        <div className="px-4 pb-4">
-          <a
-            href={car.listing_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-[#8b5cf6] hover:text-[#a78bfa] transition-colors"
-          >
+      <div className="px-4 pb-4 flex items-center justify-between gap-2">
+        {car.listing_url ? (
+          <a href={car.listing_url} target="_blank" rel="noopener noreferrer"
+            className="text-xs text-[#8b5cf6] hover:text-[#a78bfa] transition-colors">
             View on PakWheels →
           </a>
+        ) : <span />}
+        {onAnalyze && (
+          <button onClick={onAnalyze}
+            className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full bg-[#8b5cf6]/15 border border-[#8b5cf6]/30 text-[#a78bfa] hover:bg-[#8b5cf6]/30 transition-all font-medium">
+            <TrendingUp className="w-3 h-3" /> Analyze Price
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── PriceAnalyzerModal ───────────────────────────────────────────────────────
+
+function PriceAnalyzerModal({ car, loading, result, showNegotiation, setShowNegotiation, copied, setCopied, onClose }: {
+  car: CarListing; loading: boolean; result: PriceAnalysisResult | null;
+  showNegotiation: boolean; setShowNegotiation: (v: boolean) => void;
+  copied: boolean; setCopied: (v: boolean) => void; onClose: () => void;
+}) {
+  const verdictStyles = {
+    'Great Deal': { color: 'text-green-400', bg: 'bg-green-400/10 border-green-400/30', Icon: TrendingDown },
+    'Fair Price': { color: 'text-yellow-400', bg: 'bg-yellow-400/10 border-yellow-400/30', Icon: Minus },
+    'Overpriced': { color: 'text-red-400',   bg: 'bg-red-400/10   border-red-400/30',   Icon: TrendingUp  },
+  };
+  const style = result ? verdictStyles[result.verdict] : null;
+
+  const copyMsg = () => {
+    if (!result) return;
+    navigator.clipboard.writeText(result.negotiation_message);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+      <div className="relative glass-panel rounded-3xl p-6 max-w-md w-full animate-slide-up border border-[#8b5cf6]/20 shadow-2xl shadow-[#8b5cf6]/20"
+        onClick={e => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-4 right-4 p-2 rounded-full text-gray-400 hover:text-white hover:bg-white/10">
+          <X className="w-4 h-4" />
+        </button>
+
+        <div className="flex items-center gap-2 mb-1">
+          <TrendingUp className="w-5 h-5 text-[#8b5cf6]" />
+          <h2 className="font-bold text-white text-lg">Price Analysis</h2>
+        </div>
+        <p className="text-gray-400 text-sm mb-4 line-clamp-1">{car.title}</p>
+
+        {loading && (
+          <div className="flex flex-col items-center py-10 gap-3 text-gray-400">
+            <Loader2 className="w-8 h-8 animate-spin text-[#8b5cf6]" />
+            <p className="text-sm">Analyzing market data…</p>
+          </div>
+        )}
+
+        {!loading && result && style && (
+          <>
+            {/* Verdict badge */}
+            <div className={`flex items-center gap-3 p-4 rounded-2xl border mb-4 ${style.bg}`}>
+              <style.Icon className={`w-6 h-6 ${style.color} shrink-0`} />
+              <div>
+                <p className={`font-bold text-xl ${style.color}`}>{result.verdict}</p>
+                <p className="text-gray-400 text-xs">
+                  {result.similar_count > 0
+                    ? `Based on ${result.similar_count} similar listing${result.similar_count > 1 ? 's' : ''}`
+                    : 'Limited comparison data available'}
+                </p>
+              </div>
+            </div>
+
+            {/* Price comparison */}
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="glass-panel rounded-xl p-3">
+                <p className="text-xs text-gray-500 mb-1">Asking Price</p>
+                <p className="font-bold text-white text-sm">{car.price_display}</p>
+              </div>
+              <div className="glass-panel rounded-xl p-3">
+                <p className="text-xs text-gray-500 mb-1">Market Average</p>
+                <p className="font-bold text-white text-sm">PKR {result.avg_similar_price.toLocaleString()}</p>
+              </div>
+            </div>
+
+            {/* Difference pill */}
+            {result.similar_count > 0 && (
+              <div className={`text-xs font-medium px-3 py-1.5 rounded-full inline-flex items-center gap-1 mb-4 ${style.bg} ${style.color} border`}>
+                <style.Icon className="w-3 h-3" />
+                {result.price_difference > 0
+                  ? `PKR ${Math.abs(result.price_difference).toLocaleString()} above avg (${result.price_difference_pct}%)`
+                  : `PKR ${Math.abs(result.price_difference).toLocaleString()} below avg (${Math.abs(result.price_difference_pct)}%)`}
+              </div>
+            )}
+
+            {/* AI analysis */}
+            <p className="text-sm text-gray-300 mb-4 leading-relaxed">{result.analysis}</p>
+
+            {/* Negotiation message */}
+            <button onClick={() => setShowNegotiation(!showNegotiation)}
+              className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-white/5 border border-white/10 hover:border-[#8b5cf6]/40 transition-all text-sm font-medium text-gray-300 mb-2">
+              <span>💬 Draft Negotiation Message</span>
+              {showNegotiation ? <TrendingDown className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
+            </button>
+
+            {showNegotiation && (
+              <div className="bg-white/5 border border-white/10 rounded-xl p-4 animate-slide-up">
+                <p className="text-sm text-gray-300 leading-relaxed mb-3">{result.negotiation_message}</p>
+                <button onClick={copyMsg}
+                  className={`flex items-center gap-2 text-xs px-4 py-2 rounded-full font-medium transition-all ${
+                    copied ? 'bg-green-500/20 border border-green-500/30 text-green-400' : 'bg-[#8b5cf6]/20 border border-[#8b5cf6]/30 text-[#a78bfa] hover:bg-[#8b5cf6]/30'
+                  }`}>
+                  {copied ? <><Check className="w-3 h-3" /> Copied!</> : <><Copy className="w-3 h-3" /> Copy Message</>}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── ProfileRecommendationsBanner ────────────────────────────────────────────
+
+function ProfileRecommendationsBanner({ loading, cars, savedIds, onToggleFavorite, onAnalyze }: {
+  loading: boolean; cars: (CarListing & { why_match: string })[];
+  savedIds: Set<number>; onToggleFavorite: (car: CarListing) => void;
+  onAnalyze: (car: CarListing) => void;
+}) {
+  return (
+    <div className="max-w-4xl mx-auto glass-panel rounded-2xl border border-[#8b5cf6]/25 overflow-hidden animate-slide-up">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+        <div className="flex items-center gap-2">
+          <Brain className="w-4 h-4 text-[#8b5cf6]" />
+          <span className="text-sm font-semibold text-white">Your Personal Matches</span>
+          <span className="text-xs text-gray-500">based on your profile</span>
+        </div>
+        <a href="/profile" className="text-xs text-[#8b5cf6] hover:text-[#a78bfa] transition-colors flex items-center gap-1">
+          <UserCircle2 className="w-3 h-3" /> Update Profile
+        </a>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-8 gap-3 text-gray-500">
+          <Loader2 className="w-5 h-5 animate-spin text-[#8b5cf6]" />
+          <span className="text-sm">Finding your perfect matches…</span>
+        </div>
+      ) : cars.length === 0 ? (
+        <p className="text-center text-sm text-gray-500 py-6">No matches found — try updating your profile.</p>
+      ) : (
+        <div className="flex gap-4 overflow-x-auto p-4 pb-5 scrollbar-thin">
+          {cars.map(car => {
+            const saved = savedIds.has(car.listing_id);
+            return (
+              <div key={car.listing_id}
+                className="glass-panel rounded-xl overflow-hidden border border-white/10 hover:border-[#8b5cf6]/40 transition-all shrink-0 w-56">
+                <div className="h-32 relative overflow-hidden bg-gray-900">
+                  {car.hero_image
+                    ? <img src={car.hero_image} alt={car.title} className="w-full h-full object-cover" />
+                    : <div className="w-full h-full flex items-center justify-center"><Car className="w-8 h-8 text-gray-700" /></div>}
+                  <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-lg bg-black/70 text-white text-xs font-bold border border-white/10">
+                    {car.price_display}
+                  </div>
+                  <button onClick={() => onToggleFavorite(car)}
+                    className={`absolute top-2 right-2 p-1.5 rounded-full backdrop-blur-md transition-all ${
+                      saved ? 'bg-yellow-500/90 text-white' : 'bg-black/50 text-white hover:text-yellow-400'
+                    }`}>
+                    {saved ? <StarOff className="w-3 h-3" /> : <Star className="w-3 h-3" />}
+                  </button>
+                </div>
+                <div className="p-3">
+                  <p className="text-white text-xs font-bold line-clamp-1 mb-1">{car.title}</p>
+                  <p className="text-gray-400 text-xs leading-snug line-clamp-2 mb-2">{car.why_match}</p>
+                  <button onClick={() => onAnalyze(car)}
+                    className="text-xs text-[#a78bfa] hover:text-[#8b5cf6] transition-colors flex items-center gap-1">
+                    <TrendingUp className="w-3 h-3" /> Analyze Price
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
