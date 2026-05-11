@@ -15,21 +15,20 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, history: history ?? [] }),
-      // Give the RAG pipeline up to 60s to respond
-      signal: AbortSignal.timeout(60_000),
+      // Give the RAG pipeline up to 120s to respond (scraping can be slow)
+      signal: AbortSignal.timeout(120_000),
+
     });
 
-    if (!response.ok) {
-      const err = await response.text();
-      console.error('[RAG backend error]', err);
-      return NextResponse.json(
-        { error: 'RAG backend returned an error', detail: err },
-        { status: 502 },
-      );
-    }
+    // Stream the response body directly from the RAG backend to the frontend
+    return new Response(response.body, {
+      headers: {
+        'Content-Type': 'application/x-ndjson',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    });
 
-    const data = await response.json();
-    return NextResponse.json(data);
   } catch (err: any) {
     console.error('[/api/chat error]', err);
     return NextResponse.json(

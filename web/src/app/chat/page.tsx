@@ -113,7 +113,9 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([WELCOME]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
   const [savedIds, setSavedIds] = useState<Set<number>>(new Set());
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -122,14 +124,14 @@ export default function ChatPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
-  const [analyzerCar,     setAnalyzerCar]     = useState<CarListing | null>(null);
+  const [analyzerCar, setAnalyzerCar] = useState<CarListing | null>(null);
   const [analyzerLoading, setAnalyzerLoading] = useState(false);
-  const [analyzerResult,  setAnalyzerResult]  = useState<PriceAnalysisResult | null>(null);
+  const [analyzerResult, setAnalyzerResult] = useState<PriceAnalysisResult | null>(null);
   const [showNegotiation, setShowNegotiation] = useState(false);
-  const [copied,          setCopied]          = useState(false);
+  const [copied, setCopied] = useState(false);
   const [recommendations, setRecommendations] = useState<RecommendedCar[]>([]);
-  const [recsLoading,     setRecsLoading]     = useState(false);
-  const [hasProfile,      setHasProfile]      = useState(false);
+  const [recsLoading, setRecsLoading] = useState(false);
+  const [hasProfile, setHasProfile] = useState(false);
 
   // ── Auth + initial data load ────────────────────────────────────────────
 
@@ -215,14 +217,16 @@ export default function ChatPage() {
       const res = await fetch('/api/recommendations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profile: {
-          budget_max: profile.budget_max,
-          commute_km: profile.commute_km,
-          family_size: profile.family_size,
-          fuel_preference: profile.fuel_preference,
-          transmission_preference: profile.transmission_preference,
-          priorities: profile.priorities || [],
-        }}),
+        body: JSON.stringify({
+          profile: {
+            budget_max: profile.budget_max,
+            commute_km: profile.commute_km,
+            family_size: profile.family_size,
+            fuel_preference: profile.fuel_preference,
+            transmission_preference: profile.transmission_preference,
+            priorities: profile.priorities || [],
+          }
+        }),
       });
       if (res.ok) { const d = await res.json(); setRecommendations(d.recommendations || []); }
     } finally { setRecsLoading(false); }
@@ -288,26 +292,67 @@ export default function ChatPage() {
       });
 
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errData.detail || errData.error || `HTTP ${res.status}`);
+        throw new Error(`HTTP ${res.status}`);
       }
 
-      const data = await res.json();
-      const botMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: data.reply,
-        cars: data.cars ?? [],
-      };
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let done = false;
+      let botData: any = null;
 
-      const finalMessages = [...nextMessages, botMsg];
-      setMessages(finalMessages);
+      let buffer = '';
+      while (!done && reader) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        if (value) {
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep partial line in buffer
 
-      // Persist conversation for logged-in users
-      if (user) {
-        saveConversation(finalMessages, user.id);
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            let parsed: any;
+            try {
+              parsed = JSON.parse(line);
+            } catch (e) {
+              console.error("Parse error on line:", line, e);
+              continue; // skip malformed lines
+            }
+            if (parsed.status) {
+              setLoadingStatus(parsed.status);
+            } else if (parsed.done) {
+              // Normalise hero_image: fall back to image_db if hero_image is missing
+              const normalisedCars = (parsed.cars ?? []).map((c: any) => ({
+                ...c,
+                hero_image: c.hero_image || c.image_db || undefined,
+              }));
+              botData = { ...parsed, cars: normalisedCars };
+            } else if (parsed.error) {
+              throw new Error(parsed.error); // now correctly propagates up
+            }
+          }
+
+        }
+      }
+
+
+      if (botData) {
+        const botMsg: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: botData.reply,
+          cars: botData.cars ?? [],
+        };
+
+        const finalMessages = [...nextMessages, botMsg];
+        setMessages(finalMessages);
+
+        if (user) {
+          saveConversation(finalMessages, user.id);
+        }
       }
     } catch (err: any) {
+
       setMessages((prev) => [
         ...prev,
         {
@@ -319,9 +364,11 @@ export default function ChatPage() {
       ]);
     } finally {
       setIsLoading(false);
+      setLoadingStatus(null);
       inputRef.current?.focus();
     }
   };
+
 
   // ── Toggle favourite ─────────────────────────────────────────────────────
 
@@ -483,7 +530,7 @@ export default function ChatPage() {
           {/* Header */}
           <header className="h-16 glass-panel border-b border-white/10 flex items-center px-4 shrink-0 z-10 justify-between">
             <div className="flex items-center gap-3">
-              <button 
+              <button
                 onClick={() => router.back()}
                 className="p-2 text-gray-400 hover:text-white rounded-xl hover:bg-white/5 transition-colors group flex items-center gap-1"
                 title="Go back"
@@ -491,7 +538,7 @@ export default function ChatPage() {
                 <ChevronLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
                 <span className="text-xs font-medium hidden sm:inline">Back</span>
               </button>
-              
+
               <div className="flex items-center gap-3 md:hidden">
                 <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-gray-400 hover:text-white rounded-xl hover:bg-white/5">
                   <Menu className="w-6 h-6" />
@@ -499,7 +546,7 @@ export default function ChatPage() {
                 <span className="font-bold text-white">Carobar</span>
               </div>
             </div>
-            
+
             <div className="hidden md:flex items-center gap-2 text-gray-400 text-sm">
 
               {user ? (
@@ -543,11 +590,17 @@ export default function ChatPage() {
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#8b5cf6] to-blue-500 flex items-center justify-center shrink-0 shadow-lg shadow-[#8b5cf6]/20">
                   <Bot className="w-5 h-5 text-white" />
                 </div>
-                <div className="px-5 py-4 rounded-2xl rounded-tl-sm glass-panel flex items-center gap-2">
-                  <span className="w-2 h-2 bg-[#8b5cf6] rounded-full animate-bounce" />
-                  <span className="w-2 h-2 bg-[#8b5cf6] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                  <span className="w-2 h-2 bg-[#8b5cf6] rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
+                <div className="px-5 py-4 rounded-2xl rounded-tl-sm glass-panel flex flex-col gap-2 min-w-[140px]">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 bg-[#8b5cf6] rounded-full animate-bounce" />
+                    <span className="w-2 h-2 bg-[#8b5cf6] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                    <span className="w-2 h-2 bg-[#8b5cf6] rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
+                  </div>
+                  {loadingStatus && (
+                    <p className="text-xs text-gray-400 font-medium animate-pulse">{loadingStatus}</p>
+                  )}
                 </div>
+
               </div>
             )}
             <div ref={messagesEndRef} />
@@ -602,11 +655,10 @@ function MessageBubble({
     <div className={`flex gap-4 max-w-4xl mx-auto ${isUser ? 'flex-row-reverse' : ''}`}>
       {/* Avatar */}
       <div
-        className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-          isUser
-            ? 'bg-white/10 text-gray-300'
-            : 'bg-gradient-to-br from-[#8b5cf6] to-blue-500 text-white shadow-lg shadow-[#8b5cf6]/20'
-        }`}
+        className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${isUser
+          ? 'bg-white/10 text-gray-300'
+          : 'bg-gradient-to-br from-[#8b5cf6] to-blue-500 text-white shadow-lg shadow-[#8b5cf6]/20'
+          }`}
       >
         {isUser ? <User className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
       </div>
@@ -614,13 +666,12 @@ function MessageBubble({
       {/* Bubble + cards */}
       <div className={`flex flex-col gap-3 min-w-0 max-w-[85%] ${isUser ? 'items-end' : 'items-start'}`}>
         <div
-          className={`px-5 py-3.5 rounded-2xl leading-relaxed text-sm ${
-            isUser
-              ? 'bg-[#7c3aed] text-white rounded-tr-sm'
-              : msg.error
+          className={`px-5 py-3.5 rounded-2xl leading-relaxed text-sm ${isUser
+            ? 'bg-[#7c3aed] text-white rounded-tr-sm'
+            : msg.error
               ? 'bg-red-500/10 border border-red-500/20 text-red-300 rounded-tl-sm flex items-start gap-2'
               : 'glass-panel text-gray-200 rounded-tl-sm'
-          }`}
+            }`}
         >
           {msg.error && <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />}
           <ReactMarkdown
@@ -696,11 +747,10 @@ function CarCard({
         <button
           onClick={onToggle}
           title={isSaved ? 'Remove from saved cars' : 'Save this car'}
-          className={`absolute top-2 right-2 p-2 rounded-full backdrop-blur-md transition-all ${
-            isSaved
-              ? 'bg-yellow-500/90 text-white hover:bg-yellow-600 shadow-lg shadow-yellow-500/30'
-              : 'bg-black/50 text-white hover:text-yellow-400 hover:bg-black/70'
-          }`}
+          className={`absolute top-2 right-2 p-2 rounded-full backdrop-blur-md transition-all ${isSaved
+            ? 'bg-yellow-500/90 text-white hover:bg-yellow-600 shadow-lg shadow-yellow-500/30'
+            : 'bg-black/50 text-white hover:text-yellow-400 hover:bg-black/70'
+            }`}
         >
           {isSaved ? <StarOff className="w-4 h-4" /> : <Star className="w-4 h-4" />}
         </button>
@@ -755,7 +805,7 @@ function PriceAnalyzerModal({ car, loading, result, showNegotiation, setShowNego
   const verdictStyles = {
     'Great Deal': { color: 'text-green-400', bg: 'bg-green-400/10 border-green-400/30', Icon: TrendingDown },
     'Fair Price': { color: 'text-yellow-400', bg: 'bg-yellow-400/10 border-yellow-400/30', Icon: Minus },
-    'Overpriced': { color: 'text-red-400',   bg: 'bg-red-400/10   border-red-400/30',   Icon: TrendingUp  },
+    'Overpriced': { color: 'text-red-400', bg: 'bg-red-400/10   border-red-400/30', Icon: TrendingUp },
   };
   const style = result ? verdictStyles[result.verdict] : null;
 
@@ -841,9 +891,8 @@ function PriceAnalyzerModal({ car, loading, result, showNegotiation, setShowNego
               <div className="bg-white/5 border border-white/10 rounded-xl p-4 animate-slide-up">
                 <p className="text-sm text-gray-300 leading-relaxed mb-3">{result.negotiation_message}</p>
                 <button onClick={copyMsg}
-                  className={`flex items-center gap-2 text-xs px-4 py-2 rounded-full font-medium transition-all ${
-                    copied ? 'bg-green-500/20 border border-green-500/30 text-green-400' : 'bg-[#8b5cf6]/20 border border-[#8b5cf6]/30 text-[#a78bfa] hover:bg-[#8b5cf6]/30'
-                  }`}>
+                  className={`flex items-center gap-2 text-xs px-4 py-2 rounded-full font-medium transition-all ${copied ? 'bg-green-500/20 border border-green-500/30 text-green-400' : 'bg-[#8b5cf6]/20 border border-[#8b5cf6]/30 text-[#a78bfa] hover:bg-[#8b5cf6]/30'
+                    }`}>
                   {copied ? <><Check className="w-3 h-3" /> Copied!</> : <><Copy className="w-3 h-3" /> Copy Message</>}
                 </button>
               </div>
@@ -897,9 +946,8 @@ function ProfileRecommendationsBanner({ loading, cars, savedIds, onToggleFavorit
                     {car.price_display}
                   </div>
                   <button onClick={() => onToggleFavorite(car)}
-                    className={`absolute top-2 right-2 p-1.5 rounded-full backdrop-blur-md transition-all ${
-                      saved ? 'bg-yellow-500/90 text-white' : 'bg-black/50 text-white hover:text-yellow-400'
-                    }`}>
+                    className={`absolute top-2 right-2 p-1.5 rounded-full backdrop-blur-md transition-all ${saved ? 'bg-yellow-500/90 text-white' : 'bg-black/50 text-white hover:text-yellow-400'
+                      }`}>
                     {saved ? <StarOff className="w-3 h-3" /> : <Star className="w-3 h-3" />}
                   </button>
                 </div>

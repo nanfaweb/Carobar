@@ -9,12 +9,18 @@ Start:  uvicorn backend.main:app --reload --port 8000
 """
 
 import os
+import subprocess
+import json
+import asyncio
 from functools import lru_cache
+
 from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
 from supabase import create_client, Client
@@ -32,7 +38,8 @@ GROQ_API_KEY    = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL      = "llama-3.3-70b-versatile"
 EMBEDDING_MODEL = "all-mpnet-base-v2"
 MATCH_COUNT     = 5
-MATCH_THRESHOLD = 0.35
+MATCH_THRESHOLD = 0.20  # Lowered from 0.35 to be more inclusive
+
 
 # ---------------------------------------------------------------------------
 # Lazy singletons
@@ -131,6 +138,74 @@ class RecommendationsResponse(BaseModel):
     recommendations: list[dict[str, Any]]
 
 # ---------------------------------------------------------------------------
+# Pipeline Helpers
+# ---------------------------------------------------------------------------
+
+def extract_search_entities(query: str) -> dict:
+    """Uses LLM to extract make, model and city from the user's query for targeted scraping."""
+    client = get_groq_client()
+    prompt = f"""Extract car search entities from this query: "{query}"
+    Return JSON only: {{"make": "...", "model": "...", "city": "..."}}.
+    Use null if not found.
+    Common makes: toyota, honda, suzuki, daihatsu, nissan, hyundai, kia, changan, mg, proton, mercedes, bmw, audi, volkswagen, mitsubishi, isuzu, faw, prince.
+    Model examples: corolla, civic, alto, cultus, city, elantra, tucson, sportage, stonic, fortuner, prado.
+    Common cities: lahore, karachi, islamabad, rawalpindi, peshawar, faisalabad, multan, quetta."""
+    
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[{"role": "system", "content": "You are a helpful assistant that extracts structured data. Return only valid JSON."},
+                      {"role": "user", "content": prompt}],
+            temperature=0,
+            response_format={"type": "json_object"}
+        )
+        result = json.loads(response.choices[0].message.content)
+        print(f"[extract_entities] raw result: {result}")
+        return result
+    except Exception as e:
+        print(f"Extraction error: {e}")
+        return {"make": None, "model": None, "city": None}
+
+
+async def run_background_pipeline(make: str, city: str = None):
+    """Triggers the full pipeline and yields pulses to keep the connection alive."""
+    # Ensure we use the venv python if available
+    python_exe = os.sys.executable
+    venv_exe = os.path.join(os.getcwd(), "venv", "Scripts", "python.exe")
+    if os.path.exists(venv_exe):
+        python_exe = venv_exe
+        
+    cmd = [python_exe, "run_pipeline.py", "--pages", "2", "--make", make]
+    if city:
+        cmd.extend(["--city", city])
+    
+    import time
+    start_time = time.time()
+    print(f"--- Triggering {make} pipeline with {python_exe} ---")
+    try:
+        # Don't pipe stdout/stderr so they flow directly to the backend terminal
+        process = subprocess.Popen(cmd) 
+        
+        while process.poll() is None:
+            if time.time() - start_time > 100:
+                process.kill()
+                print("Pipeline timed out and was killed.")
+                yield json.dumps({"status": "⚠️ Scraping took too long. Showing partial results..."}) + "\n"
+                break
+                
+            yield json.dumps({"status": f"🛰️ Still scraping {make} listings (check backend terminal for logs)..."}) + "\n"
+            await asyncio.sleep(5)
+        
+        if process.returncode != 0 and process.returncode is not None:
+            print(f"Pipeline failed with exit code {process.returncode}")
+    except Exception as e:
+        print(f"Pipeline trigger error: {e}")
+
+
+
+
+
+# ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
 
@@ -141,7 +216,26 @@ def retrieve_listings(query: str, count: int = MATCH_COUNT) -> list[dict]:
         "match_listings",
         {"query_embedding": embedding, "match_count": count, "match_threshold": MATCH_THRESHOLD},
     ).execute()
-    return result.data or []
+    cars = result.data or []
+    print(f"[retrieve_listings] query='{query}' → {len(cars)} results (vector search)")
+    
+    # Fallback: if vector search returns nothing, do a plain text search
+    if not cars:
+        print(f"[retrieve_listings] Falling back to text search for '{query}'")
+        # Extract the first word as the likely make
+        make_guess = query.strip().split()[0] if query.strip() else query
+        text_result = get_supabase().table("listings") \
+            .select("listing_id,title,make,model,year,price_pkr,price_display,mileage_km,fuel_type,transmission,location,hero_image,image_db,listing_url") \
+            .ilike("make", f"%{make_guess}%") \
+            .limit(count) \
+            .execute()
+        cars = text_result.data or []
+        print(f"[retrieve_listings] Text search for make='{make_guess}' → {len(cars)} results")
+    
+    if cars:
+        print(f"[retrieve_listings] Sample car: {cars[0].get('title')} | hero_image={'YES' if cars[0].get('hero_image') else 'NO'}")
+    
+    return cars
 
 
 def build_context(cars: list[dict]) -> str:
@@ -149,13 +243,14 @@ def build_context(cars: list[dict]) -> str:
         return "No matching listings found in the database."
     lines = ["Here are the most relevant car listings from the database:\n"]
     for i, c in enumerate(cars, 1):
+        image_url = c.get('hero_image') or c.get('image_db') or ""
         lines.append(
             f"{i}. **{c.get('title','N/A')}** ({c.get('year','N/A')})\n"
             f"   - Price: {c.get('price_display','N/A')}\n"
             f"   - Mileage: {c.get('mileage_km',0):,} km\n"
             f"   - Fuel: {c.get('fuel_type','N/A')} | Transmission: {c.get('transmission','N/A')}\n"
             f"   - Location: {c.get('location','N/A')}\n"
-            f"   - Image URL: {c.get('hero_image','')}\n"
+            f"   - Photo Available: {'Yes (' + image_url + ')' if image_url else 'No'}\n"
             f"   - Listing ID: {c.get('listing_id')}\n"
         )
     return "\n".join(lines)
@@ -164,12 +259,16 @@ def build_context(cars: list[dict]) -> str:
 def build_system_prompt(context: str) -> str:
     return f"""You are Carobar AI, an expert automotive assistant for the Pakistani car market.
 Always ground your answers in the provided listings. Be concise, friendly, and helpful.
-Format prices in PKR. When describing a car, include its image using Markdown image syntax
-if an Image URL is provided. Example: ![Car Name](Image URL).
-If the user asks something unrelated to cars, politely redirect them.
 
+IMPORTANT IMAGE RULES:
+1. If a listing has a 'Photo Available: Yes (URL)', you MUST mention it and should display it using markdown: ![Car Title](URL).
+2. If you see a photo URL, NEVER say you don't have images.
+3. Your primary goal is to help users find their dream car from the listings provided below.
+
+Current Context:
 {context}
 """
+
 
 
 def call_groq(system: str, history: list[dict], user_message: str, max_tokens: int = 1024) -> str:
@@ -192,15 +291,75 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/chat", response_model=ChatResponse)
-def chat(req: ChatRequest):
-    cars   = retrieve_listings(req.message)
-    system = build_system_prompt(build_context(cars))
-    try:
-        reply = call_groq(system, req.history, req.message)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
-    return ChatResponse(reply=reply, cars=cars)
+@app.post("/chat")
+async def chat(req: ChatRequest):
+    async def event_generator():
+        try:
+            # 1. Extract entities first to clean up the search query
+            yield json.dumps({"status": "🔍 Analyzing your query..."}) + "\n"
+            entities = extract_search_entities(req.message)
+            make = entities.get("make")
+            model = entities.get("model")
+            city = entities.get("city")
+            
+            print(f"[chat] Extracted: make={make}, model={model}, city={city}")
+            
+            # Build a targeted search query from extracted entities
+            search_query = req.message
+            if make and make.lower() not in ("null", "none", ""):
+                parts = [make]
+                if model and model.lower() not in ("null", "none", ""):
+                    parts.append(model)
+                if city and city.lower() not in ("null", "none", ""):
+                    parts.append(city)
+                search_query = " ".join(parts)
+            
+            yield json.dumps({"status": "🔎 Searching in database..."}) + "\n"
+            cars = retrieve_listings(search_query)
+            
+            # 2. Check if results actually match the requested make
+            # (vector/text search can return irrelevant results)
+            if make and make.lower() not in ("null", "none", ""):
+                matching = [c for c in cars if make.lower() in c.get("make", "").lower() or make.lower() in c.get("title", "").lower()]
+                print(f"[chat] {len(matching)}/{len(cars)} results match make='{make}'")
+                
+                # If fewer than 3 results match the make, scrape for fresh data
+                if len(matching) < 3:
+                    yield json.dumps({"status": f"🛰️ Not enough {make} listings. Scraping fresh data..."}) + "\n"
+                    async for pulse in run_background_pipeline(make, city if city and city.lower() not in ("null","none","") else None):
+                        yield pulse
+                    
+                    yield json.dumps({"status": "🔄 Updating search results..."}) + "\n"
+                    cars = retrieve_listings(search_query)
+                    # Re-filter after scrape
+                    matching = [c for c in cars if make.lower() in c.get("make", "").lower() or make.lower() in c.get("title", "").lower()]
+                    # If we now have matching cars, use those; otherwise use all
+                    cars = matching if matching else cars
+                else:
+                    cars = matching  # Only show cars that match the requested make
+
+
+
+            
+            # 3. Generate final AI response
+            yield json.dumps({"status": "🤖 AI is thinking..."}) + "\n"
+            system = build_system_prompt(build_context(cars))
+            reply = call_groq(system, req.history, req.message)
+            
+            # Send the final data
+            yield json.dumps({
+                "reply": reply,
+                "cars": cars,
+                "done": True
+            }) + "\n"
+        except Exception as exc:
+            print(f"Chat Error: {exc}")
+            yield json.dumps({"error": str(exc)}) + "\n"
+
+
+    return StreamingResponse(event_generator(), media_type="application/x-ndjson")
+
+
 
 # ---------------------------------------------------------------------------
 # Route — Price Analyzer

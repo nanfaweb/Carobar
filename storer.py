@@ -5,8 +5,10 @@ import os
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
-# Load .env file
+# Load .env file (check root and web folder)
 load_dotenv()
+load_dotenv("web/.env.local")
+
 
 # Logging setup
 logging.basicConfig(
@@ -17,8 +19,9 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 # --- CONFIGURATION ---
-URL = os.getenv("SUPABASE_URL")
-KEY = os.getenv("SUPABASE_KEY")
+URL = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+KEY = os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+
 
 if not URL or not KEY:
     log.error("Missing SUPABASE_URL or SUPABASE_KEY in .env file")

@@ -5,8 +5,10 @@ from supabase import create_client
 from sentence_transformers import SentenceTransformer
 
 def main():
-    print("Connecting to Supabase...")
-    client = create_client(os.environ['NEXT_PUBLIC_SUPABASE_URL'], os.environ['NEXT_PUBLIC_SUPABASE_ANON_KEY'])
+    url = os.environ.get('SUPABASE_URL') or os.environ.get('NEXT_PUBLIC_SUPABASE_URL')
+    key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY') or os.environ.get('NEXT_PUBLIC_SUPABASE_ANON_KEY')
+    client = create_client(url, key)
+
     
     print("Loading model...")
     model = SentenceTransformer("all-mpnet-base-v2")
